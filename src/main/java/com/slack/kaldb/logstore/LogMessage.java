@@ -127,10 +127,18 @@ public class LogMessage extends LogWireMessage {
     this.timeSinceEpochMilli = getMillisecondsSinceEpoch();
   }
 
-  private Long getMillisecondsSinceEpoch() {
+  public Long getMillisecondsSinceEpoch() {
     String s = (String) source.get(ReservedField.TIMESTAMP.fieldName);
     if (s != null) {
       return getTime(s);
+    }
+    throw raiseException(null);
+  }
+
+  public String getMessage() {
+    String s = (String) source.get(ReservedField.MESSAGE.fieldName);
+    if (s != null) {
+      return s;
     }
     throw raiseException(null);
   }

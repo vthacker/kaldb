@@ -14,6 +14,8 @@ import com.linecorp.armeria.server.logging.LoggingServiceBuilder;
 import com.linecorp.armeria.server.management.ManagementService;
 import com.linecorp.armeria.server.metric.MetricCollectingService;
 import com.slack.kaldb.config.KaldbConfig;
+import com.slack.kaldb.elasticsearchApi.ElasticsearchApiService;
+import com.slack.kaldb.logstore.LogMessage;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.binder.jvm.ClassLoaderMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
@@ -52,6 +54,11 @@ public class Kaldb {
     // Create an indexer and a grpc search service.
     KaldbIndexer indexer = KaldbIndexer.fromConfig(prometheusMeterRegistry);
 
+    // Create a protobuf handler service that calls chunkManager on search.
+    KaldbLocalSearcher<LogMessage> searcher = new KaldbLocalSearcher<>(indexer.getChunkManager());
+    GrpcServiceBuilder searchBuilder =
+        GrpcService.builder().addService(searcher).enableUnframedRequests(true);
+
     final int serverPort = KaldbConfig.get().getServerPort();
     // Create an API server to serve the search requests.
     ServerBuilder sb = Server.builder();
@@ -62,13 +69,8 @@ public class Kaldb {
     sb.service("/health", HealthCheckService.builder().build());
     sb.service("/metrics", (ctx, req) -> HttpResponse.of(prometheusMeterRegistry.scrape()));
     sb.serviceUnder("/docs", new DocService());
+    sb.annotatedService(new ElasticsearchApiService(searcher));
     sb.serviceUnder("/internal/management/", ManagementService.of());
-
-    // Create a protobuf handler service that calls chunkManager on search.
-    GrpcServiceBuilder searchBuilder =
-        GrpcService.builder()
-            .addService(new KaldbLocalSearcher<>(indexer.getChunkManager()))
-            .enableUnframedRequests(true);
     sb.service(searchBuilder.build());
 
     Server server = sb.build();
